@@ -62,7 +62,7 @@ class DuploTrainToddlerController:
                 "STOP": {"event": 7, "speed": 0}
             },
             "color_range": {"min": 0, "max": 23},
-            "sound_range": {"min": 3, "max": 10},
+            "sound_range": {"min": 0, "max": 6},
             "reconnect_settings": {
                 "max_attempts": 10,
                 "retry_delay": 5
@@ -133,18 +133,39 @@ class DuploTrainToddlerController:
     
     async def play_horn(self):
         """Play horn sound"""
-        # Use event-based command for horn (event 10)
-        cmd_bytes = bytes([0x0A, 0x00, 0x81, 0x34, 0x11, 0x51, 0x01, 10, 1, 100])
+        # Use event 7 for horn (E7)
+        cmd_bytes = bytes([0x0A, 0x00, 0x81, 0x34, 0x11, 0x51, 0x01, 7, 1, 1])
         await self.client.write_gatt_char(CHARACTERISTIC_UUID, cmd_bytes)
         print("Horn!")
     
-    async def cycle_color(self):
-        """Cycle through colors"""
+    async def set_color(self, color):
+        """Set a specific color"""
         color_range = self.config.get("color_range", {"min": 0, "max": 23})
-        self.current_color = (self.current_color + 1) % (color_range["max"] + 1)
-        if self.current_color < color_range["min"]:
-            self.current_color = color_range["min"]
+        if color < color_range["min"] or color > color_range["max"]:
+            print(f"Color {color} out of range ({color_range['min']}-{color_range['max']})")
+            return
         
+        self.current_color = color
+        # Use event-based command for color (event 4, 1, color)
+        cmd_bytes = bytes([0x0A, 0x00, 0x81, 0x34, 0x11, 0x51, 0x01, 4, 1, self.current_color])
+        await self.client.write_gatt_char(CHARACTERISTIC_UUID, cmd_bytes)
+        print(f"Color: {self.current_color}")
+    
+    async def cycle_color(self):
+        """Cycle through colors, skipping 0, 11, and 16"""
+        color_range = self.config.get("color_range", {"min": 0, "max": 23})
+        skip_colors = [0, 11, 16]
+        
+        # Find next color that's not in skip list
+        next_color = self.current_color
+        while True:
+            next_color = (next_color + 1) % (color_range["max"] + 1)
+            if next_color < color_range["min"]:
+                next_color = color_range["min"]
+            if next_color not in skip_colors:
+                break
+        
+        self.current_color = next_color
         # Use event-based command for color (event 4, 1, color)
         cmd_bytes = bytes([0x0A, 0x00, 0x81, 0x34, 0x11, 0x51, 0x01, 4, 1, self.current_color])
         await self.client.write_gatt_char(CHARACTERISTIC_UUID, cmd_bytes)
@@ -152,24 +173,17 @@ class DuploTrainToddlerController:
     
     async def cycle_sound(self):
         """Cycle through sounds"""
-        sound_range = self.config.get("sound_range", {"min": 3, "max": 10})
+        sound_range = self.config.get("sound_range", {"min": 0, "max": 6})
         
-        # Initialize to min-1 so first press goes to min
-        if self.current_sound == 0:
-            self.current_sound = sound_range["min"] - 1
-            
-        self.current_sound = self.current_sound + 1
+        # Increment and wrap around correctly (0-6)
+        self.current_sound = (self.current_sound + 1)
         if self.current_sound > sound_range["max"]:
             self.current_sound = sound_range["min"]
         
-        # Skip sounds 1 and 2 as they power off the train
-        if self.current_sound in [1, 2]:
-            self.current_sound = 3
-        
-        # Use event-based command for sound
-        cmd_bytes = bytes([0x0A, 0x00, 0x81, 0x34, 0x11, 0x51, 0x01, self.current_sound, 1, 100])
+        # Use event-based command for sound (event 6, 1, sound_variation)
+        cmd_bytes = bytes([0x0A, 0x00, 0x81, 0x34, 0x11, 0x51, 0x01, 6, 1, self.current_sound])
         await self.client.write_gatt_char(CHARACTERISTIC_UUID, cmd_bytes)
-        print(f"Sound: {self.current_sound}")
+        print(f"Sound: {self.current_sound} (sending 6,1,{self.current_sound})")
     
     def getch(self):
         """Get single character from terminal"""
@@ -202,6 +216,12 @@ class DuploTrainToddlerController:
                 # Check for keyboard input
                 char = self.getch()
                 
+                # # Check for ESC key (ASCII 27)
+                # if ord(char) == 27:
+                #     print("\nQuitting")
+                #     self.running = False
+                #     break
+                
                 # Look up action in config
                 action = self.config["key_mappings"].get(char)
                 if not action:
@@ -217,6 +237,13 @@ class DuploTrainToddlerController:
                     await self.cycle_color()
                 elif action == "SOUND":
                     await self.cycle_sound()
+                elif action and action.startswith("COLOR_"):
+                    # Handle direct color selection
+                    try:
+                        color_value = int(action.split("_")[1])
+                        await self.set_color(color_value)
+                    except (ValueError, IndexError):
+                        print(f"Invalid color action: {action}")
                 elif action:
                     await self.execute_motor_action(action)
                 else:
@@ -260,13 +287,32 @@ async def main():
     """Main function"""
     controller = DuploTrainToddlerController()
     
-    # Find and connect to train
-    device = await controller.scan_for_train()
-    if not device:
-        print("No train found. Make sure it is turned on")
-        return
+    # Keep trying to find and connect to train
+    reconnect_config = controller.config.get("reconnect_settings", {
+        "max_attempts": 1000,
+        "retry_delay": 2
+    })
     
-    if not await controller.connect(device):
+    connected = False
+    for attempt in range(reconnect_config["max_attempts"]):
+        print(f"\nConnection attempt {attempt + 1}/{reconnect_config['max_attempts']}")
+        
+        # Find train
+        device = await controller.scan_for_train()
+        if device:
+            # Try to connect
+            if await controller.connect(device):
+                connected = True
+                break
+        else:
+            print("No train found. Make sure it is turned on")
+        
+        if attempt < reconnect_config["max_attempts"] - 1:
+            print(f"Waiting {reconnect_config['retry_delay']} seconds before next attempt")
+            await asyncio.sleep(reconnect_config["retry_delay"])
+    
+    if not connected:
+        print("Failed to connect after all attempts")
         return
     
     try:

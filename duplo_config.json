@@ -1,15 +1,19 @@
 {
   "key_mappings": {
-    "F": "FORWARD_64",
+    "0": "FORWARD_64",
     "f": "FORWARD_16",
-    "G": "FORWARD_117",
-    "B": "BACKWARD_64",
+    "3": "FORWARD_117",
+    "1": "BACKWARD_64",
     "b": "BACKWARD_16",
-    "V": "BACKWARD_117",
-    "H": "HORN",
-    "C": "COLOR",
-    "S": "SOUND",
-    "X": "STOP",
+    "2": "BACKWARD_117",
+    "+": "HORN",
+    "*": "COLOR",
+    "\b": "COLOR_0",
+    "\u007f": "COLOR_0",
+    "5": "COLOR_11",
+    "6": "COLOR_17",
+    "-": "SOUND",
+    ".": "STOP",
     "Q": "QUIT"
   },
   "actions": {
@@ -27,11 +31,11 @@
     "max": 23
   },
   "sound_range": {
-    "min": 3,
-    "max": 10
+    "min": 0,
+    "max": 6
   },
   "reconnect_settings": {
-    "max_attempts": 10,
-    "retry_delay": 5
+    "max_attempts": 1000,
+    "retry_delay": 2
   }
 }
