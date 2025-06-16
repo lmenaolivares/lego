@@ -1,0 +1,37 @@
+{
+  "key_mappings": {
+    "F": "FORWARD_64",
+    "f": "FORWARD_16",
+    "G": "FORWARD_117",
+    "B": "BACKWARD_64",
+    "b": "BACKWARD_16",
+    "V": "BACKWARD_117",
+    "H": "HORN",
+    "C": "COLOR",
+    "S": "SOUND",
+    "X": "STOP",
+    "Q": "QUIT"
+  },
+  "actions": {
+    "FORWARD_16": {"event": 1, "speed": 16},
+    "FORWARD_64": {"event": 1, "speed": 64},
+    "FORWARD_117": {"event": 1, "speed": 117},
+    "BACKWARD_16": {"event": 2, "speed": 16},
+    "BACKWARD_64": {"event": 2, "speed": 64},
+    "BACKWARD_117": {"event": 2, "speed": 117},
+    "HORN": {"sound_id": 10},
+    "STOP": {"event": 7, "speed": 0}
+  },
+  "color_range": {
+    "min": 0,
+    "max": 23
+  },
+  "sound_range": {
+    "min": 3,
+    "max": 10
+  },
+  "reconnect_settings": {
+    "max_attempts": 10,
+    "retry_delay": 5
+  }
+}
